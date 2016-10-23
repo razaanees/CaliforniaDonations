@@ -1,0 +1,568 @@
+---
+output: html_document
+---
+# Political Contributions 2016 Election Season by Raza Anees
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Load all of the packages that you end up using
+# in your analysis in this code chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk.
+# This prevents the code from displaying in the knitted HTML output.
+# You should set echo=FALSE for all code chunks in your file.
+
+# To prevent scientific notation the axes of the plots
+options(scipen=5)
+
+suppressWarnings(library(ggplot2))
+suppressWarnings(library(gridExtra))
+suppressWarnings(library(dplyr))
+suppressWarnings(library(RColorBrewer))
+suppressWarnings(library(tidyr))
+suppressWarnings(library(scales))
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, Load_the_Data}
+# Load the Data
+donations <- read.csv('P00000001-CA.csv')
+
+#An extra delimiter had to be added to the csv file in order to upload the data but the "X" column only holds "NA" so it is removed
+donations$X <- NULL
+```
+This analysis explores political contributions from the State of California to the candidates in the 2016 United States presidential election. The dataset contains records from December 1, 2014 to August 31, 2016.
+
+# Univariate Plots Section
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dim(donations) 
+
+str(donations)
+
+summary(donations)
+
+head(donations, 6)
+```
+
+This data set has 923305 observations of 18 variables. There is a lot of useful data here so let's start digging!
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <- ggplot(aes(x=contb_receipt_amt), data=subset(donations, 
+      contb_receipt_amt > 0 & !is.na(contb_receipt_amt))) +
+  geom_histogram() +
+  scale_x_continuous(breaks = seq(0, 10000, 1000))
+
+p2 <- p1 + scale_x_log10(breaks = c(0.01, 0.1, 10, 100, 300, 1000))
+
+# Both plots on the same canvas
+grid.arrange(p1, p2, ncol=1)
+```
+
+Most contributions were small sums of money. There were negative values in there (probably refunds) so those were excluded from the histogram. A log transformation of the donation amount shows that the majority of donations were between $10 and $100. Let's find out the descriptive statistics for the amount of money donated, minus the refunds.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Summary excluding refunds
+with(subset(donations, contb_receipt_amt >0), summary(contb_receipt_amt))
+```
+
+The stats confirm that there were many more small donations compared to large donations. The mean, median, and even the third quartile are much closer to the minimum value than the maximum value.
+
+Let's see who received the most donations.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <- ggplot(data=donations, aes(x=cand_nm)) +
+  geom_bar(stat="count") +
+  scale_y_log10() +
+  theme(axis.text.x=element_text(angle=30, hjust=1))+
+  ylab("count (log)")
+
+p2 <- p1 + scale_y_continuous() +ylab("count")
+
+grid.arrange(p1, p2, ncol=1)
+```
+
+When presented on a log scale, it seems like the candidates received an approximately equal number of donations; but, a continuous count scale shows that Bernard Sanders and Hillary Rotham Clinton received many more donations than everyone else.
+
+Let's find out which political party received the most donations from the State of California.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, Political_Parties}
+democrats <- c('Sanders, Bernard', "Clinton, Hillary Rodham", 
+               'Lessig, Lawrence', 
+               'Webb, James Henry Jr.')
+libertarian <- c('Johnson, Gary')
+green <- c('Stein, Jill')
+donations$party <- NA
+
+# Assign a value to a column of a database considering external information
+# df --> the database under consideration
+# row --> outside information used as reference
+# assignment --> the value to assign to the specific column if there is a match with the outside information
+
+assign_party <- function(df, row, assignment) {
+  ifelse(df$cand_nm %in% row, assignment, df$party)
+}
+
+donations$party <- assign_party(donations, democrats, "Democratic")
+donations$party <- assign_party(donations, libertarian, "Libertarian")
+donations$party <- assign_party(donations, green, "Green")
+donations$party <- ifelse(is.na(donations$party), "Republican", donations$party)
+
+donations$party <- factor(donations$party, levels=c("Democratic", "Libertarian", 
+                                                    "Green", "Republican", 
+                                                    ordered=TRUE))
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data=donations, aes(x=party)) +
+  geom_bar(stat='count')
+```
+
+Let's see the top 10 cities with the most contributors, the top 10 employers, and top 10 occupations of the contributors.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Get top 10 cities that donated by tranforming table values into a dataframe
+
+ggplot(as.data.frame(sort(table(donations$contbr_city), decreasing=T)[1:10]), 
+       aes(x=Var1, y=Freq)) +
+  geom_bar(stat='identity') +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  xlab('City') +
+  ylab('Count')
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(as.data.frame(sort(table(donations$contbr_employer), decreasing=T)[1:10]), 
+       aes(x=Var1, y=Freq)) +
+  geom_bar(stat='identity') +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  xlab('Employer') +
+  ylab('Count')
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(as.data.frame(sort(table(donations$contbr_occupation), 
+                          decreasing=T)[1:10]), aes(x=Var1, y=Freq)) +
+  geom_bar(stat='identity') +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  xlab('Employer') +
+  ylab('Count')
+
+```
+
+It seems that retired, self-employed, or unemployed people contributed the most. Or maybe they did not want to publicly announce the company that they work for. There are no specific companies in the top 10 contributors list. If I expand the list to 15, then Kaiser, Google, and Stanford University appear.
+
+Retired and self-employed Californians contributed the most when looking at occupation or employer statistics. I wonder which candidate retired and self-employed people contributed to the most.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data=subset(donations, contbr_occupation== "RETIRED" | 
+                     contbr_occupation == "SELF-EMPLOYED"), aes(x=cand_nm)) +
+  geom_bar(stat="count") +
+  theme(axis.text.x=element_text(angle=30, hjust=1))+
+  ggtitle('Donations from Retired or Self-Employed Donors')
+```
+
+Interesting, although Bernie Sanders received the most number of contributions, it looks like retired and self-employed people contributed to Hillary Clinton the most. Donald Trump also received more donations than Bernie Sanders in this demographic. This also fits the narrative that young people supported Bernie Sanders more than old people (who are more likely to be retired).
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+This dataset has 923305 donation records with 18 different variables. The variables include information about the candidates and the contributers. There is more information about the contributors such as the contributor's occupation, employment, and city of residence.
+
+Most of the variables are factors with varying levels; therefore, all except one variable are categorical. The only continuous variable is the amount of money donated to the candidates.
+
+Observations:  
+
+* The median contribution is $27 when refunds (negative contributions) are factored in.
+
+* Excluding refunds, the mean, median, and third quartile amount for contributions is much less than the maximum amount.
+
+* There are many more presidential candidates from the Republican party than any other.
+
+* Democratic candidates received many more donations than candidates from other parties.
+
+* Retired and self-employed Californians gave more contributions to and clearly favor Hillary Clinton.
+
+### What is/are the main feature(s) of interest in your dataset?
+
+The main features of this dataset are the candidates and the donations they received from people within California. This record of donations may be able to predict the voting sentiment in the State of California. It is important to remember that the donations may not imply a correlation with votes. Donors may not be United States citizens or unable to vote for other reasons during the general election.
+
+### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+
+The contributor's information such as city of residence, occupation, and employer as well as the political affiliation of the candidates are good supporting features to understanding the political map of the State of California.
+
+### Did you create any new variables from existing variables in the dataset?
+
+I created a column for the political party that each candidate belongs to. This column was filled with information obtained from outside of this dataset.
+
+### Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+
+I log transformed the histogram of the contribution amount. The histogram on the continuous scale was negatively skewed but the log transformed histogram showed a normal distribution with peak around $30. So it seems that the candidates received many number of donations with small sums of money.
+
+I also log transformed the y-axis of the number of donations for each candidate. Although there is no statistical meaning for this, the high number of donations to Bernie Sanders and Hillary Clinton made it hard to understand the number of donations that the other candidates received on a continuous y scale.
+
+
+# Bivariate Plots Section
+```{r echo=FALSE, errors=FALSE, warning=FALSE, Bivariate_Plots}
+p1 <- ggplot(data=donations, aes(x=cand_nm, y=contb_receipt_amt)) +
+  geom_boxplot() +
+  theme(axis.text.x=element_text(angle=30, hjust=1))
+
+p2 <- ggplot(data=donations, aes(x=cand_nm, y=contb_receipt_amt)) +
+  geom_boxplot() +
+  scale_y_continuous(limits=c(0, quantile(donations$contb_receipt_amt, 0.95)))+
+  theme(axis.text.x=element_text(angle=30, hjust=1)) +
+  ggtitle('95% quantile of contribution amount to candidates')
+
+grid.arrange(p1, p2, ncol=1)
+```
+
+The boxplot of value of donations for each candidate had large outliers so a second plot shows the 95% quantile of the data as the upper limit on the y-axis. The original box plot with the full dataset also shows negative values, which are probably refunds requested by the donors. These refunds are not included in the 95% quartile.
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE}
+by(donations$contb_receipt_amt, donations$cand_nm, summary)
+```
+
+
+It seems that Republican candidates received higher dollar value donations than Democratic candidates based on their mean, median, and third quartile statistics. Let's confirm this.
+
+```{r, echo=FALSE, error=FALSE, warning=FALSE}
+by(donations$contb_receipt_amt, donations$party, summary)
+```
+
+Although Democratic candidates received more number of donations, Republican candidates received higher value donations with a higher median, mean, and quartile.
+
+I wonder which candidate received the highest sum of donations.
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE}
+ggplot(data=donations, aes(x=cand_nm, y=contb_receipt_amt)) +
+  stat_summary(fun.y=sum, geom='bar') +
+  theme(axis.text.x=element_text(angle=45, hjust=1))+
+  scale_y_continuous(labels=comma)
+```
+
+Even though Bernie Sanders received the highest number of donations, Hillary Clinton received a much higher sum. This dataset has donation records from Dec 1, 2014 to August 31, 2016. Hillary Clinton was nominated as the Democratic candidate for president on July 26, 2016 so that could explain some of the gap in donation amount between her and Bernie Sanders. However, it seems that Hillary Clinton's donors made larger donations to her campaign overall than Bernie Sanders' donors. This can also be seen in the donation summary a few blocks above.
+
+Similar to the univariate analysis, let's look at the top 10 cities, occupations, and employers for the sum of money donated.
+
+```{r, echo=FALSE, error=FALSE, warning=FALSE}
+# Simplest way to find and organize the cities by sum of donations.
+# Tried using the group_by and summarize method but the cities were not grouped properly
+sum.donations.city <- by(donations$contb_receipt_amt, donations$contbr_city, sum)
+sum.donations.city.df <- as.data.frame.list(sum.donations.city)
+sum.donations.city.df <- gather(sum.donations.city.df, key=city, value=sum)
+sum.donations.city.df <- sum.donations.city.df[order(-sum.donations.city.df$sum), 
+                                               ]
+
+ggplot(data=head(sum.donations.city.df, 10), aes(x=city, y=sum)) +
+  geom_bar(stat='identity')+
+  scale_y_continuous(breaks=seq(0,15000000, 2000000), labels=comma) +
+  theme(axis.text.x=element_text(angle=15, hjust=1))
+```
+
+```{r, echo=FALSE, error=FALSE, warning=FALSE}
+sum.donations.occ <- by(donations$contb_receipt_amt, donations$contbr_occupation, 
+                        sum)
+sum.donations.occ.df <- as.data.frame.list(sum.donations.occ)
+sum.donations.occ.df <- gather(sum.donations.occ.df, key=occupation, value=sum)
+sum.donations.occ.df <- sum.donations.occ.df[order(-sum.donations.occ.df$sum), ]
+
+ggplot(data=head(sum.donations.occ.df, 10), aes(x=occupation, y=sum)) +
+  geom_bar(stat='identity')+
+  scale_y_continuous(breaks=seq(0,19000000, 2000000), labels=comma)+
+  theme(axis.text.x=element_text(angle=15, hjust=1))
+```
+
+```{r, echo=FALSE, error=FALSE, warning=FALSE}
+sum.donations.emp <- by(donations$contb_receipt_amt, donations$contbr_employer, 
+                        sum)
+sum.donations.emp.df <- as.data.frame.list(sum.donations.emp)
+sum.donations.emp.df <- gather(sum.donations.emp.df, key=employer, value=sum)
+sum.donations.emp.df <- sum.donations.emp.df[order(-sum.donations.emp.df$sum), ]
+
+ggplot(data=head(sum.donations.emp.df,10), aes(x=employer, y=sum)) +
+  geom_bar(stat='identity')+
+  scale_y_continuous(breaks=seq(0,15000000, 2000000), labels=comma)+
+  theme(axis.text.x=element_text(angle=15, hjust=1))
+```
+
+Many of the same cities and professions show up in the top 10 list for sum of donations as the number of donations. However, the difference between the value of the donations among cities stands out a lot more than the number of donations from the previous section. It also seems like donors are more hesitant to name their employer than their occupation since there isn't a single specific employer name in the top 10 list. Retired Californians seem more invested in the presidential race from their actions, as previously noticed.
+
+With the Democratic and Republican nominees selected, I'd like to see if there are pockets in California that favor one candidate over the other. Let's find out the top 5 cities that donated the most money to Hillary Clinton and Donald Trump.
+
+```{r, echo=FALSE, error=FALSE, warning=FALSE}
+hc <- subset(donations, cand_nm == "Clinton, Hillary Rodham")
+sum.donations <- by(hc$contb_receipt_amt, hc$contbr_city, sum)
+sum.donations.df <- as.data.frame.list(sum.donations)
+sum.donations.df <- gather(sum.donations.df, key=city, value=sum)
+sum.donations.df <- sum.donations.df[order(-sum.donations.df$sum), ]
+
+ggplot(data=head(sum.donations.df,10), aes(x=city, y=sum)) +
+  geom_bar(stat='identity')+
+  scale_y_continuous(breaks=seq(0,15000000, 2000000), labels=comma)+
+  theme(axis.text.x=element_text(angle=15, hjust=1))+
+  ggtitle('Top 10 Contributors to Hillary Clinton')
+```
+
+```{r, echo=FALSE, error=FALSE, warning=FALSE}
+dt <- subset(donations, cand_nm == "Trump, Donald J.")
+sum.donations <- by(dt$contb_receipt_amt, dt$contbr_city, sum)
+sum.donations.df <- as.data.frame.list(sum.donations)
+sum.donations.df <- gather(sum.donations.df, key=city, value=sum)
+sum.donations.df <- sum.donations.df[order(-sum.donations.df$sum), ]
+
+ggplot(data=head(sum.donations.df,10), aes(x=city, y=sum)) +
+  geom_bar(stat='identity')+
+  scale_y_continuous(labels=comma)+
+  theme(axis.text.x=element_text(angle=15, hjust=1))+
+  ggtitle('Top 10 Contributors to Donald Trump')
+```
+
+It is clear to see that some areas of California favor one candidate more than other areas. The donations from all cities are overwhelmingly for Hillary Clinton but southern California seems to have more Donald Trump supporters than Northern California.
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?
+
+I continued to discover that both the number and value of the donations was in favor of two Democratic candidates - Hillary Clinton and Bernie Sanders. Something interesting that I noticed is that although Bernie Sanders received more number of donations than Hillary Clinton, Hillary received a much higher sum of donations. Bernie Sanders received $19,630,343 from 407,151 donations while Hillary Clinton received $63,707,471 from 356,696 donations. This shows that Hillary Clinton's supporters donated more money in each donation. The statistics for mean and median donation to each candidate also corroborate this.
+
+### Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+
+I noticed that although the State of California is in clear favor of Democratic candidates, particularly Hillary Clinton and Bernie Sanders, cities in Southern California prefer the Republican nominee more than cities in Northern California.
+
+Other interesting relationships:  
+
+* Retired Californians donated the most number of times and the most sum of money.
+
+* Donors are more comfortable listing their occupation than their place of employement.
+
+* There is a larger gap between the top 10 contributing cities when comparing sums of donations vs number of donations.
+
+### What was the strongest relationship you found?
+
+This dataset has one continuous variable and 18 categorical variables so it is not possible to statistically determine and rank relationships using measures such as correlation.
+
+Looking at the data objectively, the strongest relationship I found is sum of money donated and Democratic candidates. Hillary Clinton received 56% of all donations from the State of California while the other 23 candidates received the rest.
+
+# Multivariate Plots Section
+
+I want to see the number and sum of donations that each candidate received during the primary and general election cycle.
+
+```{r echo=FALSE, Multivariate_Plots}
+# Assign "refund" factor to negative contributions to candidates in the election_tp column
+donations$election_tp <- factor(donations$election_tp, labels = 
+                                  c("Refunds", "G2016", "P2016", "P2020"))
+donations$election_tp <- factor(donations$election_tp, 
+                                levels=c("P2016", "G2016", "P2020", "Refunds"), 
+                                ordered=TRUE)
+
+ggplot(data=donations, aes(x=cand_nm)) +
+  geom_bar(stat='count')+
+  facet_wrap(~election_tp, scales='free')+
+  theme(axis.text.x=element_text(angle=90, hjust=1))
+#
+#
+ggplot(data=donations, aes(x=cand_nm, y=contb_receipt_amt)) +
+  stat_summary(fun.y=sum, geom='bar') +
+  facet_wrap(~election_tp, scales='free')+
+  theme(axis.text.x=element_text(angle=90, hjust=1)) +
+  ylab('USD')
+
+```
+
+Looks like Lindsey Graham's supporters are thinking ahead.
+
+Let's look at how the top 10 contributing cities and occupations, by sum, donated to each of the party's candidates and to the parties themselves.
+Each party's presidential nominee is:
+* Democratic - Hillary Clinton
+* Republican - Donald J. Trump
+* Libertarian - Gary Johnson
+* Green Party - Jill Stein
+
+The top 10 contributing cities by sum are:
+```{r, echo=FALSE, warning=FALSE, error=FALSE}
+sort(table(donations$contbr_city), decreasing=T)[1:10]
+
+cities=c("LOS ANGELES", "SAN FRANCISCO", "SAN DIEGO", "OAKLAND", "SAN JOSE", 
+         "SACRAMENTO", "BERKELEY", "LONG BEACH", "SANTA MONICA", "SANTA BARBARA")
+cands=c("Clinton, Hillary Rodham", "Trump, Donald J.", "Johnson, Gary", 
+        "Stein, Jill")
+donations_cities <- donations %>%
+  filter(contbr_city %in% cities & cand_nm %in% cands) %>%
+  group_by(cand_nm, contbr_city) %>%
+  summarize(sum = sum(contb_receipt_amt), n=n()) %>%
+  arrange(cand_nm, -sum, contbr_city)
+colnames(donations_cities)<-c("candidates", "city", "sum")
+
+ggplot(data=donations_cities, aes(x=city, y=sum)) +
+  geom_bar(stat='identity', aes(fill=candidates)) +
+  scale_color_brewer(type='div', guide=guide_legend(title='Candidates')) +
+  theme(axis.text.x=element_text(angle=15, hjust=1))
+```
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE}
+donations_party <- donations %>%
+  filter(contbr_city %in% cities) %>%
+  group_by(party, contbr_city) %>%
+  summarize(sum = sum(contb_receipt_amt), n=n()) %>%
+  arrange(party, -sum)
+colnames(donations_party)<-c("party", "city", "sum")
+
+ggplot(data=donations_party, aes(x=city, y=sum)) +
+  geom_bar(stat='identity', aes(fill=party)) +
+  scale_color_brewer(type='qual', guide=guide_legend(title='Party')) +
+  theme(axis.text.x=element_text(angle=15, hjust=1))
+
+```
+
+Again, the contributions from cities in California are overwhelmingly Democratic - both for the party and the nominee.
+
+Some cities have a higher proportion of Republican support, such as San Diego, while others have almost no Republican support, such as Oakland and Berkeley.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+sort(table(donations$contbr_occupation), decreasing=T)[1:10]
+
+occupations=c("RETIRED", "NOT EMPLOYED", "ATTORNEY", "TEACHER", "ENGINEER", 
+              "HOMEMAKER", "SOFTWARE ENGINEER", "PHYSICIAN", "PROFESSOR", "CEO")
+cands=c("Clinton, Hillary Rodham", "Trump, Donald J.", "Johnson, Gary", 
+        "Stein, Jill")
+donations_occ <- donations %>%
+  filter(contbr_occupation %in% occupations & cand_nm %in% cands) %>%
+  group_by(cand_nm, contbr_occupation) %>%
+  summarize(sum = sum(contb_receipt_amt), n=n()) %>%
+  arrange(cand_nm, -sum)
+colnames(donations_occ)<-c("candidates", "Occupation", "sum")
+
+ggplot(data=donations_occ, aes(x=Occupation, y=sum)) +
+  geom_bar(stat='identity', aes(fill=candidates)) +
+  scale_color_brewer(type='div', guide=guide_legend(title='Occupation')) +
+  theme(axis.text.x=element_text(angle=15, hjust=1))
+```
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE}
+donations_occ_party <- donations %>%
+  filter(contbr_occupation %in% occupations) %>%
+  group_by(party, contbr_occupation) %>%
+  summarize(sum = sum(contb_receipt_amt), n=n()) %>%
+  arrange(party, -sum)
+colnames(donations_occ_party)<-c("party", "Occupation", "sum")
+
+ggplot(data=donations_occ_party, aes(x=Occupation, y=sum)) +
+  geom_bar(stat='identity', aes(fill=party)) +
+  scale_color_brewer(type='qual', guide=guide_legend(title='Party')) +
+  theme(axis.text.x=element_text(angle=15, hjust=1))
+```
+
+From the graphs of occupations split up by support, it looks like the more academic professions are in favor of Democrats and Hillary Clinton. Occupations like Professor, Teacher, and Software Engineer have no measureable support for the Republican party or Donald Trump.
+
+The biggest Republican, and Donald Trump, supporters in this list are in the "Retired" category. People from this list have the most overall contributions as well. Since people retire from all professions, it is difficult to determine the exact make-up of this group. There are definitely sub-groups in this category and they may determine the support for either Donald Trump or Hillary Clinton.  
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+I shifted my attention away from overall support and looked towards the general presidential election, now that the nominees for each party have been selected. My goal to determine voting patterns based on donations from certain areas and demographics of the state. I looked the top 10 cities and occupations that made the most number of donations and plotted the sum of their donations for each of the presidential nominees and each of the political parties. I plotted candidates and parties to see if there was any deviation from normal support considering the nominees for each party.
+
+Hillary Clinton and the Democratic Party are the clear favourites in California and there was never any doubt about that. Every city and occupation in the top 10 number of donations heavily favored Hillary Clinton. However, there are areas where her support is strongest, Berkeley and Oakland, and some areas where Donald Trump has more support, San Diego and Los Angeles, when compared to other areas.
+
+As for occupations, it seems that academic occupations like Professor and Teacher strongly favor the Democratic Party and Hillary Clinton while almost half of retired Californians favor the Republican Party. However, less than half of the retired people in California donated to Donald Trump.
+
+### Were there any interesting or surprising interactions between features?
+
+A few surprising interactions I found:
+* Hillary Clinton received most of her donations during the primary phase of the election. Since Bernie Sanders was a very popular candidate and received more number of donations, there was a possibility that Hillary Clinton could have received most of her donations after she won the Democratic primary. However, it seems like Hillary Clinton has had powerful supporters throughout the election cycle.
+
+* It was confirmed that cities in Southern California have a little more support for the Republican Party and Donald Trump than cities in Northern California, as was observed in the bivariate analysis section.
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+
+```{r echo=FALSE, Plot_One, fig.height=10, fig.align="center"}
+p1 <- ggplot(data=donations, aes(x=cand_nm)) +
+  geom_bar(color='black', fill='yellow', stat='count') +
+  scale_y_continuous(breaks=seq(0, 500000, 50000), labels=comma)+
+  ylab('Number of Donations Received') +
+  xlab('')+
+  ggtitle('Number of Donations Received by each candidate')+
+  theme(axis.text.x=element_text(angle=30, hjust=1)) +
+  theme(axis.title.y=element_text(margin=margin(0,10,0,0)))
+
+p2 <- ggplot(data=donations, aes(x=cand_nm, y=contb_receipt_amt)) +
+  stat_summary(fun.y=sum, geom='bar', colour='black', fill='red') +
+  scale_y_continuous(labels=comma, breaks=seq(0, 60000000, 5000000))+
+  ylab('Sum of Donations Received ($)')+
+  xlab('Candidate') +
+  ggtitle("Sum of Donations Received by each Candidate") +
+  theme(axis.text.x=element_text(angle=30, hjust=1)) +
+  theme(axis.title.y=element_text(margin=margin(0,10,0,0)))
+
+grid.arrange(p1, p2, ncol=1)
+```
+
+### Description One
+
+I wanted to focus on these plots because they show the difference between the type of support that the candidates received from people in California. It's clear that the two Democratic candidates, Bernie Sanders and Hillary Clinton, have much more support than their Republican counterparts. The interesting thing is that although Hillary Clinton received slightly fewer donations than Bernie Sanders, she received a much higher sum of money than her main opponent during the Primaries. This indicates that Hillary's supporters are in a better financial condition and/or more invested in the presidential race than Bernie's supporters.
+
+### Plot Two
+```{r echo=FALSE, Plot_Two, fig.align="center"}
+ggplot(data=subset(donations, contb_receipt_amt >0), 
+       aes(x=cand_nm, y=contb_receipt_amt)) +
+  geom_boxplot(aes(color=party)) +
+  scale_y_sqrt(labels=comma, breaks=seq(1,20000, 1000)) +
+  theme(axis.text.x=element_text(angle=30, hjust=1)) +
+  ylab('Value of Single Donation ($)') +
+  xlab("Candidate Name") +
+  ggtitle('Value of Single Donation to Each Presidential Candidate Excluding Refunds')
+```
+
+### Description Two
+This plot shows the difference in the value of single donations that each candidate received. Some candidates received a wide range of donations and have large inter-quartile ranges (IQR). There are also a lot of outliers for each candidate.
+
+From the graph, Bernie Sanders has the smallest IQR ($35) but also a lot of outliers. The largest IQR are for Republican candidates Jeb Bush ($2,650) and Chris Christie ($2,600). Neither of them received a large number of donations so accurate statistics are difficult to determine in their cases.
+
+### Plot Three
+```{r echo=FALSE, Plot_Three, fig.align="center"}
+ggplot(data=donations_cities, aes(x=city, y=sum)) +
+  geom_bar(stat='identity', aes(fill=candidates)) +
+  scale_fill_brewer(palette ='Set3', guide=guide_legend(title='Candidates')) +
+  scale_y_continuous(labels=comma, breaks = seq(0, 9000000, 1000000)) +
+  theme(axis.text.x=element_text(angle=30, hjust=1)) +
+  xlab("City") +
+  ylab('Total Amount Donated ($)') +
+  ggtitle('Donations from Top 10 Contributing cities')
+```
+
+### Description Three
+The final plot I want to highlight shows the sum of donations from the top 10 contributing cities to the presidential candidates of each political party. These plots show several things:
+
+* Hillary Clinton is overwhelmingly supported in each of the top 10 cities. She received 86% of the donations from the City of San Diego and that was her lowest proportion of donations from any city.
+
+* Almost no support for the Libertarian or Green Party or their nominees. The Libertarian candidate received 0.3% of the donations and the Green Party candidate received 0.01% of the donations.
+
+* Very little support for the Republican candidate Donald Trump. The most amount of money he received was from the City of Los Angeles - $334,864.90
+
+------
+# Reflection
+
+California is known as a "Blue", or Democratic, State and the donation receipt records of Californians definitely supports that title. Donors from California overwhelmingly support the Democratic Party and candidates that run on its platform. 
+
+This dataset contains 923,305 donation records to 24 candidates from December 2014 to August 2016. Californians donated a combined $119,000,000 to all of the candidates; although, 1 of the 24 candidates received 56% of that money. There was 1 candidate from the Green and Libertarian Party each, 4 candidates from the Democratic Party, and 18 Republican Candidates. Two Democratic candidates, Bernie Sanders and Hillary Clinton, were clear favourites because they received more donations than all of the other candidates combined. Between the two major Democratic candidates, Bernie Sanders received 50,455 more donations but Hillary Clinton received $44,077,128 more.
+
+There are areas in California that are more favourable to the Republican Party than other areas. The cities of Los Angeles, San Diego, and Newport Beach have a higher percentage of Republican donors than the rest of the cities in California. Conversely, Berkeley and Oakland have almost no Republican supporters.
+
+Retired Californians are more invested in the election than other demographics because they donated the most number of times and the most sum of money to the presidential candidates. People from all professional backgrounds eventually retire so this group had the highest proportion of Republican supporters compared to all of the other professions. Highly academic professions such as Professor or Teacher are overwhelmingly Democratic, as shown by their donations.
+
+It's no secret that California is a Democratic State, especially with this record of donations. Based on the donation pattern, California will most likely vote for Hillary Clinton this November during the presidential election.
+
+Note: Donation tendencies may not correlate to voting patterns. There are several scenarios where an individual may donate and not vote or vice versa.
+
+***
+
+The biggest difficulty I had with the analysis of this dataset was plotting the sum of money donated vs other variables. This was especially true when applying a limit on the data such as the sum of money from the top 10 cities or top 10 occupations.
+
+Successes in this project, and I think this is generally true for R, were the ease of plotting data with the ggplot2 package. A lot of information can be plotted with much less syntax using ggplot2 compared to other programming languages.
+
+The analysis can be improved for future work by ordering the receipt date timestamp and plotting the donations to each candidate over time. These could be correlated to political events, such as the RNC or DNC, and to polling results. Polling data from the same communities could also be included in this dataset to compare donations with polling sentiment for each candidate.
+
